@@ -30,6 +30,16 @@ export default function App() {
 
   const isLogged = useMemo(() => Boolean(token), [token]);
 
+  const [shouldRefocus, setShouldRefocus] = useState(false);
+
+  useEffect(() => {
+    if (!loading && shouldRefocus) {
+      inputRef.current?.focus();
+      inputRef.current?.select?.(); // opcional, aquí no hace nada si está vacío
+      setShouldRefocus(false);
+    }
+  }, [loading, shouldRefocus]);
+
   async function loadRecords() {
     setError("");
     setLoading(true);
@@ -95,17 +105,16 @@ export default function App() {
     try {
       const text = newText.trim();
       if (!text) throw new Error("El texto no puede estar vacío.");
+
       await api.createRecord(text);
 
-      // IMPORTANTE: no limpiamos el input (lo dejas listo con el mismo texto)
-      // Si prefieres dejarlo vacío pero preparado, dímelo y lo cambiamos.
+      // dejar el input vacío
       setNewText("");
 
-      await loadRecords();
+      // pedir reenfoque cuando termine loading
+      setShouldRefocus(true);
 
-      // Re-enfocar el input para seguir metiendo textos
-      inputRef.current?.focus();
-      inputRef.current?.select?.(); // selecciona el texto para sobrescribir rápido
+      await loadRecords();
     } catch (e) {
       setError(e.message);
     } finally {
