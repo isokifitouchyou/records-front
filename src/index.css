@@ -1,0 +1,132 @@
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0b0f17;
+  color: #e6e9ef;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+code {
+  color: #c7d2fe;
+}
+
+a { color: inherit; }
+
+.card {
+  border: 1px solid #1f2a3a;
+  background: #0f1724;
+  border-radius: 12px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.th, .td {
+  padding: 10px;
+  border-bottom: 1px solid #1f2a3a;
+}
+
+.th {
+  text-align: left;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: rgba(255,255,255,0.02);
+}
+
+.input, .select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0b1220;
+  border: 1px solid #263246;
+  color: #e6e9ef;
+  border-radius: 10px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.input:focus, .select:focus {
+  border-color: #3b82f6;
+}
+
+.btn {
+  background: #162235;
+  border: 1px solid #263246;
+  color: #e6e9ef;
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  background: #1f3a6a;
+  border-color: #2a4a86;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.muted {
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+/* --- Switch (checkbox bonito) --- */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  vertical-align: middle;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #263246;
+  border: 1px solid #34465f;
+  transition: 0.2s;
+  border-radius: 999px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  top: 2px;
+  background: #e6e9ef;
+  transition: 0.2s;
+  border-radius: 999px;
+}
+
+.switch input:checked + .slider {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(20px);
+}
