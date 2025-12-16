@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, clearApiUrl, clearToken, getApiUrl, getToken, setApiUrl, setToken } from "./api";
+
+function formatLocalFromUtcIso(utcIso) {
+  if (!utcIso) return "";
+  const d = new Date(utcIso); // interpreta ISO con Z como UTC
+  if (Number.isNaN(d.getTime())) return String(utcIso);
+  return d.toLocaleString(); // formato local del navegador
+}
 
 export default function App() {
   const [token, setTokenState] = useState(getToken());
@@ -18,6 +25,8 @@ export default function App() {
   // edición in-place
   const [editingId, setEditingId] = useState("");
   const [editingText, setEditingText] = useState("");
+
+  const inputRef = useRef(null);
 
   const isLogged = useMemo(() => Boolean(token), [token]);
 
@@ -87,8 +96,16 @@ export default function App() {
       const text = newText.trim();
       if (!text) throw new Error("El texto no puede estar vacío.");
       await api.createRecord(text);
+
+      // IMPORTANTE: no limpiamos el input (lo dejas listo con el mismo texto)
+      // Si prefieres dejarlo vacío pero preparado, dímelo y lo cambiamos.
       setNewText("");
+
       await loadRecords();
+
+      // Re-enfocar el input para seguir metiendo textos
+      inputRef.current?.focus();
+      inputRef.current?.select?.(); // selecciona el texto para sobrescribir rápido
     } catch (e) {
       setError(e.message);
     } finally {
@@ -123,6 +140,9 @@ export default function App() {
   }
 
   async function deleteRecord(id) {
+    const ok = window.confirm("¿Seguro que quieres borrar este registro?");
+    if (!ok) return;
+
     setError("");
     setLoading(true);
     try {
@@ -194,13 +214,21 @@ export default function App() {
       <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>
         <div className="toolbar" style={{ padding: 12, gap: 10 }}>
           <strong>Nuevo registro</strong>
+
           <div style={{ display: "flex", gap: 8, flex: 1 }}>
             <input
+              ref={inputRef}
               className="input"
-              placeholder="Escribe un texto..."
+              placeholder="Escribe un texto y pulsa Enter..."
               value={newText}
               onChange={(e) => setNewText(e.target.value)}
               disabled={loading}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (!loading && newText.trim()) createRecord();
+                }
+              }}
             />
             <button className="btn btnPrimary" onClick={createRecord} disabled={loading || !newText.trim()}>
               Guardar
@@ -211,8 +239,7 @@ export default function App() {
         <table className="table">
           <thead>
             <tr>
-              <th className="th" style={{ width: 280 }}>ID</th>
-              <th className="th" style={{ width: 220 }}>Timestamp (UTC)</th>
+              <th className="th" style={{ width: 220 }}>Fecha (local)</th>
               <th className="th">Texto</th>
               <th className="th" style={{ width: 190, textAlign: "center" }}>Acciones</th>
             </tr>
@@ -224,8 +251,9 @@ export default function App() {
 
               return (
                 <tr key={r.id}>
-                  <td className="td" style={{ fontFamily: "monospace" }}>{r.id}</td>
-                  <td className="td" style={{ fontFamily: "monospace" }}>{r.tsUtc}</td>
+                  <td className="td" style={{ fontFamily: "monospace" }}>
+                    {formatLocalFromUtcIso(r.tsUtc)}
+                  </td>
 
                   <td className="td">
                     {isEditing ? (
@@ -234,6 +262,13 @@ export default function App() {
                         value={editingText}
                         onChange={(e) => setEditingText(e.target.value)}
                         disabled={loading}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (!loading && editingText.trim()) saveEdit();
+                          }
+                          if (e.key === "Escape") cancelEdit();
+                        }}
                       />
                     ) : (
                       r.text
@@ -267,7 +302,7 @@ export default function App() {
 
             {records.length === 0 && (
               <tr>
-                <td className="td muted" colSpan={4}>
+                <td className="td muted" colSpan={3}>
                   No hay registros todavía.
                 </td>
               </tr>
@@ -277,7 +312,7 @@ export default function App() {
       </div>
 
       <p className="muted" style={{ marginTop: 12 }}>
-        El <code>tsUtc</code> lo genera el servidor en UTC. El <code>id</code> es UUID.
+        El servidor guarda el timestamp en UTC por consistencia, y aquí se muestra en hora local.
       </p>
     </div>
   );
