@@ -245,9 +245,8 @@ export default function App() {
       const secs = Math.ceil((resp?.expiresInMs || 0) / 1000);
 
       setTgInfo(secs ? `Código enviado. Caduca en ~${secs}s.` : "Código enviado.");
-      setTgStep("code"); // ✅ ahora mostramos el input del código
+      setTgStep("code");
 
-      // mini cooldown local (UX)
       setTgCooldownUntilMs(Date.now() + 1000);
     } catch (e) {
       const msg = e?.message || "Error";
@@ -257,6 +256,15 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // ✅ Enter en el PIN => submit del form
+  function handleSubmitPin(e) {
+    e.preventDefault();
+    if (loading) return;
+    if (!String(tgPin || "").trim()) return;
+    if (tgCooldownUntilMs > Date.now()) return;
+    handleRequestTelegramCode();
   }
 
   async function handleLoginTelegram(e) {
@@ -274,7 +282,6 @@ export default function App() {
       setToken(token);
       setTokenState(token);
 
-      // limpiar tras login
       setTgCode("");
       setTgInfo("");
       setTgStep("pin");
@@ -504,8 +511,8 @@ export default function App() {
           </form>
         ) : (
           <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-            {/* Paso 1: PIN + enviar código */}
-            <div className="card" style={{ padding: 12 }}>
+            {/* Paso 1: PIN + enviar código (ahora ES FORM para que Enter funcione) */}
+            <form className="card" style={{ padding: 12 }} onSubmit={handleSubmitPin}>
               <div style={{ display: "grid", gap: 12 }}>
                 <label>
                   PIN (para enviar el código)
@@ -518,9 +525,8 @@ export default function App() {
                 </label>
 
                 <button
-                  type="button"
+                  type="submit"
                   className="btn btnPrimary"
-                  onClick={handleRequestTelegramCode}
                   disabled={tgSendDisabled}
                 >
                   {tgCooldownLeftSec > 0
@@ -530,11 +536,15 @@ export default function App() {
 
                 {tgInfo && <p className="muted" style={{ margin: 0 }}>{tgInfo}</p>}
               </div>
-            </div>
+            </form>
 
-            {/* Paso 2: aparece solo después de enviar */}
+            {/* Paso 2 */}
             {tgStep === "code" && (
-              <form onSubmit={handleLoginTelegram} className="card" style={{ padding: 12, display: "grid", gap: 12 }}>
+              <form
+                onSubmit={handleLoginTelegram}
+                className="card"
+                style={{ padding: 12, display: "grid", gap: 12 }}
+              >
                 <label>
                   Código (6 dígitos)
                   <input
@@ -557,7 +567,6 @@ export default function App() {
                   className="btn"
                   type="button"
                   onClick={() => {
-                    // volver al paso 1 si quieres
                     setTgStep("pin");
                     setTgCode("");
                     setTgInfo("");
