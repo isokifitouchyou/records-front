@@ -10,11 +10,23 @@ import {
   onUnauthorized,
 } from "./api";
 
+function isMobileLike() {
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+}
+
+function weekdayLetter(d) {
+  // ES: D L M X J V S (domingo..sábado)
+  const map = ["D", "L", "M", "X", "J", "V", "S"];
+  return map[d.getDay()] || "?";
+}
+
 function formatLocalFromUtcIso(utcIso) {
+  // Desktop: W YYYY-MM-DD HH:mm:ss
   if (!utcIso) return "";
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return String(utcIso);
 
+  const W = weekdayLetter(d);
   const YYYY = String(d.getFullYear());
   const MM = String(d.getMonth() + 1).padStart(2, "0");
   const DD = String(d.getDate()).padStart(2, "0");
@@ -22,10 +34,12 @@ function formatLocalFromUtcIso(utcIso) {
   const mi = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
 
-  return `${YYYY}-${MM}-${DD} ${hh}:${mi}:${ss}`;
+  return `${W} ${YYYY}-${MM}-${DD} ${hh}:${mi}:${ss}`;
 }
 
 function formatLocalShort(utcIso) {
+  // Móvil: W MM-DD HH:mm:ss
+  // y si no es el año actual: W YY-MM-DD HH:mm:ss (año a la izquierda, 2 dígitos)
   if (!utcIso) return "";
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return String(utcIso);
@@ -33,6 +47,7 @@ function formatLocalShort(utcIso) {
   const now = new Date();
   const showYear = d.getFullYear() !== now.getFullYear();
 
+  const W = weekdayLetter(d);
   const YY = String(d.getFullYear() % 100).padStart(2, "0");
   const MM = String(d.getMonth() + 1).padStart(2, "0");
   const DD = String(d.getDate()).padStart(2, "0");
@@ -42,12 +57,55 @@ function formatLocalShort(utcIso) {
   const ss = String(d.getSeconds()).padStart(2, "0");
 
   const datePart = showYear ? `${YY}-${MM}-${DD}` : `${MM}-${DD}`;
-  return `${datePart} ${hh}:${mi}:${ss}`;
+  return `${W} ${datePart} ${hh}:${mi}:${ss}`;
 }
 
+function localDayKey(utcIso) {
+  // Clave por día en horario local: YYYY-MM-DD
+  const d = new Date(utcIso);
+  if (Number.isNaN(d.getTime())) return "invalid";
+  const YYYY = String(d.getFullYear());
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const DD = String(d.getDate()).padStart(2, "0");
+  return `${YYYY}-${MM}-${DD}`;
+}
 
-function isMobileLike() {
-  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+function localDayLabel(utcIso) {
+  // Label para separador: W YYYY-MM-DD
+  const d = new Date(utcIso);
+  if (Number.isNaN(d.getTime())) return "Fecha inválida";
+  const W = weekdayLetter(d);
+  return `${W} ${localDayKey(utcIso)}`;
+}
+
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function HighlightText({ text, query }) {
+  const raw = String(text ?? "");
+  const q = String(query ?? "").trim();
+  if (!q) return raw;
+
+  const re = new RegExp(escapeRegExp(q), "ig");
+  const parts = raw.split(re);
+  const matches = raw.match(re);
+
+  if (!matches) return raw;
+
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    out.push(parts[i]);
+    if (i < matches.length) {
+      out.push(
+        <mark key={`m-${i}`} className="hl">
+          {matches[i]}
+        </mark>
+      );
+    }
+  }
+
+  return <>{out}</>;
 }
 
 // --- JWT exp helpers ---
@@ -105,6 +163,9 @@ export default function App() {
   const [newRecordText, setNewRecordText] = useState("");
   const recordInputRef = useRef(null);
 
+  // ✅ búsqueda en registros
+  const [recordQuery, setRecordQuery] = useState("");
+
   // Shortcuts
   const [shortcuts, setShortcuts] = useState([]);
   const [newShortcutText, setNewShortcutText] = useState("");
@@ -135,6 +196,9 @@ export default function App() {
     setTgStep("pin");
     setTgCooldownUntilMs(0);
     setTgCooldownLeftSec(0);
+
+    // limpiar búsqueda
+    setRecordQuery("");
 
     // limpiar estado app
     setRecords([]);
@@ -183,7 +247,6 @@ export default function App() {
       const y = window.scrollY || 0;
       const last = lastScrollYRef.current;
 
-      // cerca de arriba, siempre visible
       if (y < 40) {
         setNavHidden(false);
         lastScrollYRef.current = y;
@@ -191,11 +254,10 @@ export default function App() {
       }
 
       const delta = y - last;
-      // umbral para evitar parpadeo
       if (Math.abs(delta) < 10) return;
 
-      if (delta > 0) setNavHidden(true); // bajando
-      else setNavHidden(false); // subiendo
+      if (delta > 0) setNavHidden(true);
+      else setNavHidden(false);
 
       lastScrollYRef.current = y;
     };
@@ -232,6 +294,11 @@ export default function App() {
       setShouldRefocus("");
     }
   }, [loading, shouldRefocus]);
+
+  // limpiar búsqueda al cambiar de pantalla (opcional, pero suele ser cómodo)
+  useEffect(() => {
+    setRecordQuery("");
+  }, [screen]);
 
   async function loadRecords() {
     const { records } = await api.listRecords();
@@ -277,7 +344,6 @@ export default function App() {
       const { token } = await api.login(username, password);
       setToken(token);
       setTokenState(token);
-
       setPassword("");
     } catch (e) {
       setError(e.message);
@@ -486,6 +552,38 @@ export default function App() {
       setLoading(false);
     }
   }
+
+  // ✅ Filtrado por texto (registros)
+  const filteredRecords = useMemo(() => {
+    const q = recordQuery.trim().toLowerCase();
+    if (!q) return records;
+    return records.filter((r) => String(r.text || "").toLowerCase().includes(q));
+  }, [records, recordQuery]);
+
+  // ✅ Agrupación por día (registros)
+  const groupedRecords = useMemo(() => {
+    const map = new Map();
+    for (const r of filteredRecords) {
+      const key = localDayKey(r.tsUtc);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    }
+    // records ya vienen ordenados desc, pero garantizamos:
+    const keys = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+    return keys.map((k) => ({ dayKey: k, items: map.get(k) || [] }));
+  }, [filteredRecords]);
+
+  // ✅ Agrupación por día (shortcuts) para que no quede todo “pegado”
+  const groupedShortcuts = useMemo(() => {
+    const map = new Map();
+    for (const s of shortcuts) {
+      const key = localDayKey(s.tsUtc);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(s);
+    }
+    const keys = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+    return keys.map((k) => ({ dayKey: k, items: map.get(k) || [] }));
+  }, [shortcuts]);
 
   const tgSendDisabled =
     loading || !String(tgPin || "").trim() || tgCooldownUntilMs > Date.now();
@@ -702,78 +800,110 @@ export default function App() {
             </div>
           </div>
 
-          {/* ✅ Modo tarjeta en móvil */}
+          {/* ✅ barra de búsqueda */}
+          <div style={{ padding: 12, paddingTop: 0 }}>
+            <input
+              className="input"
+              placeholder="Buscar en registros…"
+              value={recordQuery}
+              onChange={(e) => setRecordQuery(e.target.value)}
+              disabled={loading}
+            />
+            <div className="muted" style={{ marginTop: 6 }}>
+              {recordQuery.trim()
+                ? `${filteredRecords.length} resultado(s)`
+                : `${records.length} registro(s)`}
+            </div>
+          </div>
+
+          {/* ✅ Modo tarjeta en móvil + separadores por día */}
           {mobileLike ? (
-            <div className="listCards">
-              {records.map((r) => {
-                const isEditing = editingType === "record" && editingId === r.id;
-                return (
-                  <div key={r.id} className="itemCard">
-                    <div className="itemCardTop">
-                      <div className="itemMeta">{formatLocalShort(r.tsUtc)}</div>
+            <div style={{ paddingBottom: 6 }}>
+              {groupedRecords.map((g) => (
+                <div key={g.dayKey}>
+                  <div className="dayGroupHeader">
+                    <span>{localDayLabel(g.items[0]?.tsUtc)}</span>
+                    <small>{g.items.length} registro(s)</small>
+                  </div>
 
-                      <div className="itemActions">
-                        {isEditing ? (
-                          <>
-                            <button className="btn btnPrimary iconBtn" onClick={saveEdit} disabled={loading} title="Guardar">
-                              💾
-                            </button>
-                            <button className="btn iconBtn" onClick={cancelEdit} disabled={loading} title="Cancelar">
-                              ✖️
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              className="btn btnPrimary iconBtn"
-                              onClick={() => startEdit("record", r)}
-                              disabled={loading}
-                              title="Editar"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              className="btn iconBtn"
-                              onClick={() => deleteRecord(r.id)}
-                              disabled={loading}
-                              title="Borrar"
-                            >
-                              🗑
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                  <div className="listCards" style={{ paddingTop: 0 }}>
+                    {g.items.map((r) => {
+                      const isEditing = editingType === "record" && editingId === r.id;
 
-                    <div style={{ whiteSpace: "pre-wrap" }}>
-                      {isEditing ? (
-                        <textarea
-                          className="input"
-                          rows={3}
-                          value={editingText}
-                          onChange={(e) => setEditingText(e.target.value)}
-                          disabled={loading}
-                        />
-                      ) : (
-                        r.text
-                      )}
+                      return (
+                        <div key={r.id} className="itemCard">
+                          <div className="itemCardTop">
+                            <div className="itemMeta">{formatLocalShort(r.tsUtc)}</div>
+
+                            <div className="itemActions">
+                              {isEditing ? (
+                                <>
+                                  <button className="btn btnPrimary iconBtn" onClick={saveEdit} disabled={loading} title="Guardar">
+                                    💾
+                                  </button>
+                                  <button className="btn iconBtn" onClick={cancelEdit} disabled={loading} title="Cancelar">
+                                    ✖️
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn btnPrimary iconBtn"
+                                    onClick={() => startEdit("record", r)}
+                                    disabled={loading}
+                                    title="Editar"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    className="btn iconBtn"
+                                    onClick={() => deleteRecord(r.id)}
+                                    disabled={loading}
+                                    title="Borrar"
+                                  >
+                                    🗑
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ whiteSpace: "pre-wrap" }}>
+                            {isEditing ? (
+                              <textarea
+                                className="input"
+                                rows={3}
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                disabled={loading}
+                              />
+                            ) : (
+                              <HighlightText text={r.text} query={recordQuery} />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {filteredRecords.length === 0 && (
+                <div className="listCards">
+                  <div className="itemCard">
+                    <div className="muted">
+                      {recordQuery.trim() ? "No hay resultados para esa búsqueda." : "No hay registros todavía."}
                     </div>
                   </div>
-                );
-              })}
-
-              {records.length === 0 && (
-                <div className="itemCard">
-                  <div className="muted">No hay registros todavía.</div>
                 </div>
               )}
             </div>
           ) : (
-            // Tabla en desktop
+            // Desktop: tabla + separadores por día
             <table className="table">
               <thead>
                 <tr>
-                  <th className="th" style={{ width: 220 }}>
+                  <th className="th" style={{ width: 260 }}>
                     Fecha (local)
                   </th>
                   <th className="th">Texto</th>
@@ -784,57 +914,71 @@ export default function App() {
               </thead>
 
               <tbody>
-                {records.map((r) => {
-                  const isEditing = editingType === "record" && editingId === r.id;
-                  return (
-                    <tr key={r.id}>
-                      <td className="td" style={{ fontFamily: "monospace" }}>
-                        {formatLocalFromUtcIso(r.tsUtc)}
-                      </td>
-
-                      <td className="td" style={{ whiteSpace: "pre-wrap" }}>
-                        {isEditing ? (
-                          <textarea
-                            className="input"
-                            rows={2}
-                            value={editingText}
-                            onChange={(e) => setEditingText(e.target.value)}
-                            disabled={loading}
-                          />
-                        ) : (
-                          r.text
-                        )}
-                      </td>
-
-                      <td className="td" style={{ textAlign: "center" }}>
-                        {isEditing ? (
-                          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                            <button className="btn btnPrimary" onClick={saveEdit} disabled={loading}>
-                              Guardar
-                            </button>
-                            <button className="btn" onClick={cancelEdit} disabled={loading}>
-                              Cancelar
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                            <button className="btn btnPrimary" onClick={() => startEdit("record", r)} disabled={loading}>
-                              Editar
-                            </button>
-                            <button className="btn" onClick={() => deleteRecord(r.id)} disabled={loading} title="Borrar">
-                              🗑
-                            </button>
-                          </div>
-                        )}
+                {groupedRecords.map((g) => (
+                  <React.Fragment key={g.dayKey}>
+                    <tr className="daySepRow">
+                      <td className="td" colSpan={3}>
+                        <div className="daySepLabel">
+                          <span>{localDayLabel(g.items[0]?.tsUtc)}</span>
+                          <small>{g.items.length} registro(s)</small>
+                        </div>
                       </td>
                     </tr>
-                  );
-                })}
 
-                {records.length === 0 && (
+                    {g.items.map((r) => {
+                      const isEditing = editingType === "record" && editingId === r.id;
+
+                      return (
+                        <tr key={r.id}>
+                          <td className="td" style={{ fontFamily: "monospace" }}>
+                            {formatLocalFromUtcIso(r.tsUtc)}
+                          </td>
+
+                          <td className="td" style={{ whiteSpace: "pre-wrap" }}>
+                            {isEditing ? (
+                              <textarea
+                                className="input"
+                                rows={2}
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                disabled={loading}
+                              />
+                            ) : (
+                              <HighlightText text={r.text} query={recordQuery} />
+                            )}
+                          </td>
+
+                          <td className="td" style={{ textAlign: "center" }}>
+                            {isEditing ? (
+                              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                                <button className="btn btnPrimary" onClick={saveEdit} disabled={loading}>
+                                  Guardar
+                                </button>
+                                <button className="btn" onClick={cancelEdit} disabled={loading}>
+                                  Cancelar
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                                <button className="btn btnPrimary" onClick={() => startEdit("record", r)} disabled={loading}>
+                                  Editar
+                                </button>
+                                <button className="btn" onClick={() => deleteRecord(r.id)} disabled={loading} title="Borrar">
+                                  🗑
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+
+                {filteredRecords.length === 0 && (
                   <tr>
                     <td className="td muted" colSpan={3}>
-                      No hay registros todavía.
+                      {recordQuery.trim() ? "No hay resultados para esa búsqueda." : "No hay registros todavía."}
                     </td>
                   </tr>
                 )}
@@ -877,83 +1021,96 @@ export default function App() {
             </div>
           </div>
 
-          {/* ✅ Modo tarjeta en móvil */}
           {mobileLike ? (
-            <div className="listCards">
-              {shortcuts.map((s) => {
-                const isEditing = editingType === "shortcut" && editingId === s.id;
-
-                return (
-                  <div key={s.id} className="itemCard">
-                    <div className="itemCardTop">
-                      <div className="itemMeta">{formatLocalShort(s.tsUtc)}</div>
-
-                      <div className="itemActions">
-                        {isEditing ? (
-                          <>
-                            <button className="btn btnPrimary iconBtn" onClick={saveEdit} disabled={loading} title="Guardar">
-                              💾
-                            </button>
-                            <button className="btn iconBtn" onClick={cancelEdit} disabled={loading} title="Cancelar">
-                              ✖️
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              className="btn btnPrimary iconBtn"
-                              onClick={() => registerFromShortcut(s.text)}
-                              disabled={loading}
-                              title="Registrar"
-                            >
-                              ➕
-                            </button>
-                            <button className="btn iconBtn" onClick={() => startEdit("shortcut", s)} disabled={loading} title="Editar">
-                              ✏️
-                            </button>
-                            <button className="btn iconBtn" onClick={() => deleteShortcut(s.id)} disabled={loading} title="Borrar">
-                              🗑
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ whiteSpace: "pre-wrap" }}>
-                      {isEditing ? (
-                        <textarea
-                          className="input"
-                          rows={3}
-                          value={editingText}
-                          onChange={(e) => setEditingText(e.target.value)}
-                          disabled={loading}
-                        />
-                      ) : (
-                        s.text
-                      )}
-                    </div>
+            <div style={{ paddingBottom: 6 }}>
+              {groupedShortcuts.map((g) => (
+                <div key={g.dayKey}>
+                  <div className="dayGroupHeader">
+                    <span>{localDayLabel(g.items[0]?.tsUtc)}</span>
+                    <small>{g.items.length} shortcut(s)</small>
                   </div>
-                );
-              })}
+
+                  <div className="listCards" style={{ paddingTop: 0 }}>
+                    {g.items.map((s) => {
+                      const isEditing = editingType === "shortcut" && editingId === s.id;
+
+                      return (
+                        <div key={s.id} className="itemCard">
+                          <div className="itemCardTop">
+                            <div className="itemMeta">{formatLocalShort(s.tsUtc)}</div>
+
+                            <div className="itemActions">
+                              {isEditing ? (
+                                <>
+                                  <button className="btn btnPrimary iconBtn" onClick={saveEdit} disabled={loading} title="Guardar">
+                                    💾
+                                  </button>
+                                  <button className="btn iconBtn" onClick={cancelEdit} disabled={loading} title="Cancelar">
+                                    ✖️
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn btnPrimary iconBtn"
+                                    onClick={() => registerFromShortcut(s.text)}
+                                    disabled={loading}
+                                    title="Registrar"
+                                  >
+                                    ➕
+                                  </button>
+                                  <button className="btn iconBtn" onClick={() => startEdit("shortcut", s)} disabled={loading} title="Editar">
+                                    ✏️
+                                  </button>
+                                  <button className="btn iconBtn" onClick={() => deleteShortcut(s.id)} disabled={loading} title="Borrar">
+                                    🗑
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ whiteSpace: "pre-wrap" }}>
+                            {isEditing ? (
+                              <textarea
+                                className="input"
+                                rows={3}
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                disabled={loading}
+                              />
+                            ) : (
+                              s.text
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
 
               {shortcuts.length === 0 && (
-                <div className="itemCard">
-                  <div className="muted">No hay shortcuts todavía.</div>
+                <div className="listCards">
+                  <div className="itemCard">
+                    <div className="muted">No hay shortcuts todavía.</div>
+                  </div>
                 </div>
               )}
 
-              <div className="itemCard">
-                <div className="muted">
-                  Pulsa <strong>➕</strong> para crear un registro con ese texto.
+              <div className="listCards" style={{ paddingTop: 0 }}>
+                <div className="itemCard">
+                  <div className="muted">
+                    Pulsa <strong>➕</strong> para crear un registro con ese texto.
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
-            // Tabla en desktop
             <table className="table">
               <thead>
                 <tr>
-                  <th className="th" style={{ width: 220 }}>
+                  <th className="th" style={{ width: 260 }}>
                     Fecha (local)
                   </th>
                   <th className="th">Texto</th>
@@ -964,63 +1121,76 @@ export default function App() {
               </thead>
 
               <tbody>
-                {shortcuts.map((s) => {
-                  const isEditing = editingType === "shortcut" && editingId === s.id;
-
-                  return (
-                    <tr key={s.id}>
-                      <td className="td" style={{ fontFamily: "monospace" }}>
-                        {formatLocalFromUtcIso(s.tsUtc)}
-                      </td>
-
-                      <td className="td" style={{ whiteSpace: "pre-wrap" }}>
-                        {isEditing ? (
-                          <textarea
-                            className="input"
-                            rows={2}
-                            value={editingText}
-                            onChange={(e) => setEditingText(e.target.value)}
-                            disabled={loading}
-                          />
-                        ) : (
-                          s.text
-                        )}
-                      </td>
-
-                      <td className="td" style={{ textAlign: "center" }}>
-                        {isEditing ? (
-                          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-                            <button className="btn btnPrimary" onClick={saveEdit} disabled={loading}>
-                              Guardar
-                            </button>
-                            <button className="btn" onClick={cancelEdit} disabled={loading}>
-                              Cancelar
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                            <button
-                              className="btn btnPrimary"
-                              onClick={() => registerFromShortcut(s.text)}
-                              disabled={loading}
-                              title="Crea un registro con este texto"
-                            >
-                              Registrar
-                            </button>
-
-                            <button className="btn" onClick={() => startEdit("shortcut", s)} disabled={loading}>
-                              Editar
-                            </button>
-
-                            <button className="btn" onClick={() => deleteShortcut(s.id)} disabled={loading} title="Borrar">
-                              🗑
-                            </button>
-                          </div>
-                        )}
+                {groupedShortcuts.map((g) => (
+                  <React.Fragment key={g.dayKey}>
+                    <tr className="daySepRow">
+                      <td className="td" colSpan={3}>
+                        <div className="daySepLabel">
+                          <span>{localDayLabel(g.items[0]?.tsUtc)}</span>
+                          <small>{g.items.length} shortcut(s)</small>
+                        </div>
                       </td>
                     </tr>
-                  );
-                })}
+
+                    {g.items.map((s) => {
+                      const isEditing = editingType === "shortcut" && editingId === s.id;
+
+                      return (
+                        <tr key={s.id}>
+                          <td className="td" style={{ fontFamily: "monospace" }}>
+                            {formatLocalFromUtcIso(s.tsUtc)}
+                          </td>
+
+                          <td className="td" style={{ whiteSpace: "pre-wrap" }}>
+                            {isEditing ? (
+                              <textarea
+                                className="input"
+                                rows={2}
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                disabled={loading}
+                              />
+                            ) : (
+                              s.text
+                            )}
+                          </td>
+
+                          <td className="td" style={{ textAlign: "center" }}>
+                            {isEditing ? (
+                              <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                                <button className="btn btnPrimary" onClick={saveEdit} disabled={loading}>
+                                  Guardar
+                                </button>
+                                <button className="btn" onClick={cancelEdit} disabled={loading}>
+                                  Cancelar
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                                <button
+                                  className="btn btnPrimary"
+                                  onClick={() => registerFromShortcut(s.text)}
+                                  disabled={loading}
+                                  title="Crea un registro con este texto"
+                                >
+                                  Registrar
+                                </button>
+
+                                <button className="btn" onClick={() => startEdit("shortcut", s)} disabled={loading}>
+                                  Editar
+                                </button>
+
+                                <button className="btn" onClick={() => deleteShortcut(s.id)} disabled={loading} title="Borrar">
+                                  🗑
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
 
                 {shortcuts.length === 0 && (
                   <tr>

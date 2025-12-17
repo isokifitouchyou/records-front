@@ -25,7 +25,7 @@ a { color: inherit; }
 .table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed; /* ✅ ayuda a evitar desbordes */
+  table-layout: fixed;
 }
 
 .th, .td {
@@ -34,7 +34,7 @@ a { color: inherit; }
 }
 
 .td {
-  word-break: break-word; /* ✅ el texto no rompe el layout */
+  word-break: break-word;
 }
 
 .th {
@@ -145,7 +145,7 @@ a { color: inherit; }
   .th, .td { padding: 8px; }
 }
 
-/* -------------------- Bottom Nav (Twitter-like) -------------------- */
+/* -------------------- Bottom Nav -------------------- */
 
 .withBottomNav {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));
@@ -181,11 +181,25 @@ a { color: inherit; }
   width: 100%;
   border-radius: 999px;
   padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
 .bottomNavBtnActive {
   background: #1f3a6a;
   border-color: #2a4a86;
+}
+
+.bottomNavIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.bottomNavLabel {
+  font-size: 13px;
+  opacity: 0.95;
 }
 
 /* -------------------- Mobile Card Lists -------------------- */
@@ -214,7 +228,7 @@ a { color: inherit; }
 .itemMeta {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .itemActions {
@@ -230,24 +244,51 @@ a { color: inherit; }
   border-radius: 12px;
 }
 
-/* --- Bottom nav: icono + texto + indicador activo --- */
-.bottomNavBtn {
-  width: 100%;
-  border-radius: 999px;
-  padding: 10px 12px;
+/* -------------------- Highlight búsqueda -------------------- */
+
+.hl {
+  background: rgba(250, 204, 21, 0.35); /* amarillo */
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 6px;
+}
+
+/* -------------------- Separadores por día -------------------- */
+
+.dayGroupHeader {
+  margin: 12px 10px 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #1f2a3a;
+  background: rgba(255,255,255,0.03);
+  color: #cbd5e1;
+  font-weight: 600;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 10px;
-  position: relative;
 }
 
-.bottomNavIcon {
-  font-size: 18px;
-  line-height: 1;
+.dayGroupHeader small {
+  font-weight: 500;
+  opacity: 0.8;
 }
 
-.bottomNavLabel {
-  font-size: 13px;
-  opacity: 0.9;
+.daySepRow td {
+  background: rgba(255,255,255,0.03);
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.daySepLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.daySepLabel small {
+  font-weight: 500;
+  opacity: 0.8;
 }
