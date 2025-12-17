@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, clearApiUrl, clearToken, getApiUrl, getToken, setApiUrl, setToken } from "./api";
+import {
+  api,
+  clearApiUrl,
+  clearToken,
+  getApiUrl,
+  getToken,
+  setApiUrl,
+  setToken,
+  onUnauthorized,
+} from "./api";
 
 function formatLocalFromUtcIso(utcIso) {
   if (!utcIso) return "";
@@ -11,6 +20,26 @@ function formatLocalFromUtcIso(utcIso) {
 function isMobileLike() {
   // táctil / “coarse pointer” suele ser móvil/tablet
   return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+}
+
+// --- JWT exp helpers (opcional pero útil) ---
+function decodeJwtPayload(token) {
+  try {
+    const [, payloadB64] = String(token || "").split(".");
+    if (!payloadB64) return null;
+
+    const base64 = payloadB64.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(base64);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function getJwtExpMs(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return null;
+  return payload.exp * 1000; // exp en segundos -> ms
 }
 
 export default function App() {
@@ -47,6 +76,53 @@ export default function App() {
   const [shouldRefocus, setShouldRefocus] = useState(""); // "record" | "shortcut" | ""
 
   const isLogged = useMemo(() => Boolean(token), [token]);
+
+  function doLogout(message = "") {
+    clearToken();
+    setTokenState("");
+    setError(message);
+
+    // limpiar credenciales del formulario
+    setUsername("");
+    setPassword("");
+
+    // limpiar estado app
+    setRecords([]);
+    setShortcuts([]);
+    setEditingType("");
+    setEditingId("");
+    setEditingText("");
+
+    // opcional: limpiar textos de creación/inputs
+    setNewRecordText("");
+    setNewShortcutText("");
+    setShouldRefocus("");
+  }
+
+  // ✅ Si cualquier request devuelve 401, api.js llama a esto automáticamente
+  useEffect(() => {
+    const unsub = onUnauthorized((msg) => {
+      doLogout(msg || "Sesión caducada. Vuelve a entrar.");
+    });
+    return unsub;
+  }, []);
+
+  // ✅ Logout automático al llegar la expiración del JWT (opcional)
+  useEffect(() => {
+    if (!token) return;
+
+    const expMs = getJwtExpMs(token);
+    if (!expMs) return;
+
+    const SKEW_MS = 5000;
+    const delay = Math.max(0, expMs - Date.now() - SKEW_MS);
+
+    const id = setTimeout(() => {
+      doLogout("Sesión caducada. Vuelve a entrar.");
+    }, delay);
+
+    return () => clearTimeout(id);
+  }, [token]);
 
   useEffect(() => {
     if (!loading && shouldRefocus === "record") {
@@ -102,6 +178,9 @@ export default function App() {
       const { token } = await api.login(username, password);
       setToken(token);
       setTokenState(token);
+
+      // opcional: por seguridad, limpiar password tras login
+      setPassword("");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -110,29 +189,13 @@ export default function App() {
   }
 
   function handleLogout() {
-    clearToken();
-    setTokenState("");
-    setError("");
-    setRecords([]);
-    setShortcuts([]);
-    setEditingType("");
-    setEditingId("");
-    setEditingText("");
+    doLogout("");
   }
 
   function handleResetApiUrl() {
     clearApiUrl();
-    clearToken();
-    setTokenState("");
+    doLogout("");
     setApiUrlState("");
-    setUsername("");
-    setPassword("");
-    setError("");
-    setRecords([]);
-    setShortcuts([]);
-    setEditingType("");
-    setEditingId("");
-    setEditingText("");
   }
 
   function startEdit(type, item) {

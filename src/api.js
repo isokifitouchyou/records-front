@@ -1,6 +1,8 @@
 const TOKEN_KEY = "token";
 const API_URL_KEY = "apiUrl";
 
+// -------------------- Token / ApiUrl storage --------------------
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || "";
 }
@@ -29,6 +31,33 @@ function mustHaveApiUrl() {
   return base;
 }
 
+// -------------------- 401 handling (event) --------------------
+
+let unauthorizedHandlers = [];
+
+/**
+ * Permite que el front se suscriba a eventos de "no autorizado" (401).
+ * Devuelve una función para desuscribirse.
+ */
+export function onUnauthorized(fn) {
+  unauthorizedHandlers.push(fn);
+  return () => {
+    unauthorizedHandlers = unauthorizedHandlers.filter((h) => h !== fn);
+  };
+}
+
+function notifyUnauthorized(message) {
+  unauthorizedHandlers.forEach((h) => {
+    try {
+      h(message);
+    } catch {
+      // no-op: evitamos que un handler rompa a los demás
+    }
+  });
+}
+
+// -------------------- Request helper --------------------
+
 async function request(path, { method = "GET", body } = {}) {
   const base = mustHaveApiUrl();
   const token = getToken();
@@ -45,6 +74,14 @@ async function request(path, { method = "GET", body } = {}) {
   const isJson = (res.headers.get("content-type") || "").includes("application/json");
   const data = isJson ? await res.json().catch(() => null) : null;
 
+  // ✅ Caso especial: 401 => limpiamos token y avisamos a la app
+  if (res.status === 401) {
+    const msg = data?.error || "Token inválido o caducado.";
+    clearToken();
+    notifyUnauthorized(msg);
+    throw new Error(msg);
+  }
+
   if (!res.ok) {
     const msg = data?.error || `Error HTTP ${res.status}`;
     throw new Error(msg);
@@ -52,6 +89,8 @@ async function request(path, { method = "GET", body } = {}) {
 
   return data;
 }
+
+// -------------------- Public API --------------------
 
 export const api = {
   // Auth
