@@ -59,10 +59,11 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  // Telegram login
+  // Telegram login (mejorado)
   const [tgPin, setTgPin] = useState("");
   const [tgCode, setTgCode] = useState("");
   const [tgInfo, setTgInfo] = useState("");
+  const [tgStep, setTgStep] = useState("pin"); // "pin" | "code"
   const [tgCooldownUntilMs, setTgCooldownUntilMs] = useState(0);
   const [tgCooldownLeftSec, setTgCooldownLeftSec] = useState(0);
 
@@ -94,9 +95,11 @@ export default function App() {
     // limpiar credenciales
     setUsername("");
     setPassword("");
+
     setTgPin("");
     setTgCode("");
     setTgInfo("");
+    setTgStep("pin");
     setTgCooldownUntilMs(0);
     setTgCooldownLeftSec(0);
 
@@ -219,7 +222,6 @@ export default function App() {
   }
 
   function parseWaitSecondsFromMessage(msg) {
-    // El backend devuelve: "Espera 60s antes de pedir otro código."
     const m = String(msg || "").match(/(\d+)\s*s/i);
     if (!m) return 0;
     const n = Number(m[1]);
@@ -243,18 +245,14 @@ export default function App() {
       const secs = Math.ceil((resp?.expiresInMs || 0) / 1000);
 
       setTgInfo(secs ? `Código enviado. Caduca en ~${secs}s.` : "Código enviado.");
-      // Pequeño cooldown local (mínimo) para UX (independiente del backend)
+      setTgStep("code"); // ✅ ahora mostramos el input del código
+
+      // mini cooldown local (UX)
       setTgCooldownUntilMs(Date.now() + 1000);
     } catch (e) {
       const msg = e?.message || "Error";
-
-      // Si el backend te ha contestado con un 429, tu request() convierte eso en Error(msg)
-      // y aquí podemos intentar sacar los segundos para deshabilitar el botón.
       const waitSec = parseWaitSecondsFromMessage(msg);
-      if (waitSec > 0) {
-        setTgCooldownUntilMs(Date.now() + waitSec * 1000);
-      }
-
+      if (waitSec > 0) setTgCooldownUntilMs(Date.now() + waitSec * 1000);
       setError(msg);
     } finally {
       setLoading(false);
@@ -276,8 +274,10 @@ export default function App() {
       setToken(token);
       setTokenState(token);
 
+      // limpiar tras login
       setTgCode("");
       setTgInfo("");
+      setTgStep("pin");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -454,6 +454,9 @@ export default function App() {
               onClick={() => {
                 setLoginMode("telegram");
                 setError("");
+                setTgInfo("");
+                setTgStep("pin");
+                setTgCode("");
               }}
               disabled={loading}
             >
@@ -500,52 +503,72 @@ export default function App() {
             </button>
           </form>
         ) : (
-          <form
-            onSubmit={handleLoginTelegram}
-            style={{ display: "grid", gap: 12, marginTop: 12 }}
-          >
-            <label>
-              PIN (para enviar el código)
-              <input
-                className="input"
-                type="password"
-                value={tgPin}
-                onChange={(e) => setTgPin(e.target.value)}
-              />
-            </label>
+          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+            {/* Paso 1: PIN + enviar código */}
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ display: "grid", gap: 12 }}>
+                <label>
+                  PIN (para enviar el código)
+                  <input
+                    className="input"
+                    type="password"
+                    value={tgPin}
+                    onChange={(e) => setTgPin(e.target.value)}
+                  />
+                </label>
 
-            <button
-              type="button"
-              className="btn btnPrimary"
-              onClick={handleRequestTelegramCode}
-              disabled={tgSendDisabled}
-            >
-              {tgCooldownLeftSec > 0 ? `Reintentar en ${tgCooldownLeftSec}s` : "Enviar código por Telegram"}
-            </button>
+                <button
+                  type="button"
+                  className="btn btnPrimary"
+                  onClick={handleRequestTelegramCode}
+                  disabled={tgSendDisabled}
+                >
+                  {tgCooldownLeftSec > 0
+                    ? `Reintentar en ${tgCooldownLeftSec}s`
+                    : "Enviar código por Telegram"}
+                </button>
 
-            {tgInfo && (
-              <p className="muted" style={{ margin: 0 }}>
-                {tgInfo}
-              </p>
+                {tgInfo && <p className="muted" style={{ margin: 0 }}>{tgInfo}</p>}
+              </div>
+            </div>
+
+            {/* Paso 2: aparece solo después de enviar */}
+            {tgStep === "code" && (
+              <form onSubmit={handleLoginTelegram} className="card" style={{ padding: 12, display: "grid", gap: 12 }}>
+                <label>
+                  Código (6 dígitos)
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    placeholder="123456"
+                    value={tgCode}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D+/g, "").slice(0, 6);
+                      setTgCode(v);
+                    }}
+                  />
+                </label>
+
+                <button className="btn btnPrimary" disabled={loading || tgCode.length !== 6}>
+                  Entrar con código
+                </button>
+
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    // volver al paso 1 si quieres
+                    setTgStep("pin");
+                    setTgCode("");
+                    setTgInfo("");
+                    setError("");
+                  }}
+                  disabled={loading}
+                >
+                  Volver
+                </button>
+              </form>
             )}
-
-            <label>
-              Código (6 dígitos)
-              <input
-                className="input"
-                inputMode="numeric"
-                placeholder="123456"
-                value={tgCode}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D+/g, "").slice(0, 6);
-                  setTgCode(v);
-                }}
-              />
-            </label>
-
-            <button className="btn btnPrimary" disabled={loading || tgCode.length !== 6}>
-              Entrar con código
-            </button>
 
             <button
               className="btn"
@@ -555,7 +578,7 @@ export default function App() {
             >
               Borrar URL y sesión
             </button>
-          </form>
+          </div>
         )}
 
         {error && <p style={{ color: "#fb7185" }}>{error}</p>}
