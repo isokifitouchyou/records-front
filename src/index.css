@@ -229,3 +229,25 @@ a { color: inherit; }
   min-width: 42px;
   border-radius: 12px;
 }
+
+/* --- Bottom nav: icono + texto + indicador activo --- */
+.bottomNavBtn {
+  width: 100%;
+  border-radius: 999px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  position: relative;
+}
+
+.bottomNavIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.bottomNavLabel {
+  font-size: 13px;
+  opacity: 0.9;
+}

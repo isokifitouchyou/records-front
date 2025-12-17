@@ -14,7 +14,15 @@ function formatLocalFromUtcIso(utcIso) {
   if (!utcIso) return "";
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return String(utcIso);
-  return d.toLocaleString();
+
+  const YYYY = String(d.getFullYear());
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const DD = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+
+  return `${YYYY}-${MM}-${DD} ${hh}:${mi}:${ss}`;
 }
 
 function formatLocalShort(utcIso) {
@@ -25,16 +33,18 @@ function formatLocalShort(utcIso) {
   const now = new Date();
   const showYear = d.getFullYear() !== now.getFullYear();
 
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(d.getFullYear());
+  const YY = String(d.getFullYear() % 100).padStart(2, "0");
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const DD = String(d.getDate()).padStart(2, "0");
 
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
 
-  return `${dd}/${mm}${showYear ? `/${yyyy}` : ""} ${hh}:${mi}:${ss}`;
+  const datePart = showYear ? `${YY}-${MM}-${DD}` : `${MM}-${DD}`;
+  return `${datePart} ${hh}:${mi}:${ss}`;
 }
+
 
 function isMobileLike() {
   return window.matchMedia?.("(pointer: coarse)").matches ?? false;
@@ -1038,7 +1048,8 @@ export default function App() {
             disabled={loading || screen === "records"}
             title="Registros"
           >
-            Registros
+            <span className="bottomNavIcon" aria-hidden="true">📝</span>
+            <span className="bottomNavLabel">Registros</span>
           </button>
 
           <button
@@ -1047,7 +1058,8 @@ export default function App() {
             disabled={loading || screen === "shortcuts"}
             title="Shortcuts"
           >
-            Shortcuts
+            <span className="bottomNavIcon" aria-hidden="true">⚡</span>
+            <span className="bottomNavLabel">Shortcuts</span>
           </button>
         </div>
       </div>
