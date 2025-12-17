@@ -51,7 +51,7 @@ function notifyUnauthorized(message) {
     try {
       h(message);
     } catch {
-      // no-op: evitamos que un handler rompa a los demás
+      // no-op
     }
   });
 }
@@ -93,8 +93,12 @@ async function request(path, { method = "GET", body } = {}) {
 // -------------------- Public API --------------------
 
 export const api = {
-  // Auth
+  // Auth (password)
   login: (username, password) => request("/auth/login", { method: "POST", body: { username, password } }),
+
+  // Auth (telegram)
+  requestTelegramCode: () => request("/auth/telegram/request-code", { method: "POST" }),
+  verifyTelegramCode: (code) => request("/auth/telegram/verify", { method: "POST", body: { code } }),
 
   // Records
   listRecords: () => request("/records"),

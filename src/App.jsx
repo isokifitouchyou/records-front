@@ -18,11 +18,10 @@ function formatLocalFromUtcIso(utcIso) {
 }
 
 function isMobileLike() {
-  // táctil / “coarse pointer” suele ser móvil/tablet
   return window.matchMedia?.("(pointer: coarse)").matches ?? false;
 }
 
-// --- JWT exp helpers (opcional pero útil) ---
+// --- JWT exp helpers ---
 function decodeJwtPayload(token) {
   try {
     const [, payloadB64] = String(token || "").split(".");
@@ -39,7 +38,7 @@ function decodeJwtPayload(token) {
 function getJwtExpMs(token) {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return null;
-  return payload.exp * 1000; // exp en segundos -> ms
+  return payload.exp * 1000;
 }
 
 export default function App() {
@@ -54,8 +53,15 @@ export default function App() {
 
   // Login
   const [apiUrl, setApiUrlState] = useState(getApiUrl() || "");
+  const [loginMode, setLoginMode] = useState("password"); // "password" | "telegram"
+
+  // Password login
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
+  // Telegram login
+  const [tgCode, setTgCode] = useState("");
+  const [tgInfo, setTgInfo] = useState(""); // mensajito tipo “enviado, caduca en...”
 
   // Records
   const [records, setRecords] = useState([]);
@@ -72,7 +78,7 @@ export default function App() {
   const [editingId, setEditingId] = useState("");
   const [editingText, setEditingText] = useState("");
 
-  // reenfoque tras operaciones (porque disabled+focus no funciona)
+  // reenfoque tras operaciones
   const [shouldRefocus, setShouldRefocus] = useState(""); // "record" | "shortcut" | ""
 
   const isLogged = useMemo(() => Boolean(token), [token]);
@@ -82,9 +88,11 @@ export default function App() {
     setTokenState("");
     setError(message);
 
-    // limpiar credenciales del formulario
+    // limpiar credenciales
     setUsername("");
     setPassword("");
+    setTgCode("");
+    setTgInfo("");
 
     // limpiar estado app
     setRecords([]);
@@ -92,14 +100,12 @@ export default function App() {
     setEditingType("");
     setEditingId("");
     setEditingText("");
-
-    // opcional: limpiar textos de creación/inputs
     setNewRecordText("");
     setNewShortcutText("");
     setShouldRefocus("");
   }
 
-  // ✅ Si cualquier request devuelve 401, api.js llama a esto automáticamente
+  // 401 => logout
   useEffect(() => {
     const unsub = onUnauthorized((msg) => {
       doLogout(msg || "Sesión caducada. Vuelve a entrar.");
@@ -107,7 +113,7 @@ export default function App() {
     return unsub;
   }, []);
 
-  // ✅ Logout automático al llegar la expiración del JWT (opcional)
+  // Logout al expirar JWT (opcional)
   useEffect(() => {
     if (!token) return;
 
@@ -152,7 +158,6 @@ export default function App() {
   useEffect(() => {
     if (!isLogged) return;
 
-    // al entrar, carga ambos para que cambiar de pantalla sea instantáneo
     (async () => {
       setError("");
       setLoading(true);
@@ -166,9 +171,10 @@ export default function App() {
     })();
   }, [isLogged]);
 
-  async function handleLogin(e) {
+  async function handleLoginPassword(e) {
     e.preventDefault();
     setError("");
+    setTgInfo("");
     setLoading(true);
     try {
       const normalized = setApiUrl(apiUrl);
@@ -179,8 +185,53 @@ export default function App() {
       setToken(token);
       setTokenState(token);
 
-      // opcional: por seguridad, limpiar password tras login
+      // limpiar password por seguridad
       setPassword("");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRequestTelegramCode() {
+    setError("");
+    setTgInfo("");
+    setLoading(true);
+    try {
+      const normalized = setApiUrl(apiUrl);
+      if (!/^https?:\/\/.+/i.test(normalized)) {
+        throw new Error("La URL de la API debe empezar por http:// o https://");
+      }
+
+      const resp = await api.requestTelegramCode();
+      const secs = Math.ceil((resp?.expiresInMs || 0) / 1000);
+      setTgInfo(secs ? `Código enviado. Caduca en ~${secs}s.` : "Código enviado.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLoginTelegram(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const normalized = setApiUrl(apiUrl);
+      if (!/^https?:\/\/.+/i.test(normalized)) {
+        throw new Error("La URL de la API debe empezar por http:// o https://");
+      }
+
+      const code = String(tgCode || "").trim();
+      const { token } = await api.verifyTelegramCode(code);
+      setToken(token);
+      setTokenState(token);
+
+      // limpiar el código tras login
+      setTgCode("");
+      setTgInfo("");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -324,39 +375,103 @@ export default function App() {
       <div style={{ maxWidth: 460, margin: "40px auto", padding: 16 }}>
         <h2>Login</h2>
 
-        <form onSubmit={handleLogin} style={{ display: "grid", gap: 12 }}>
+        <form style={{ display: "grid", gap: 12 }}>
           <label>
             URL de la API
             <input className="input" value={apiUrl} onChange={(e) => setApiUrlState(e.target.value)} />
           </label>
 
-          <label>
-            Usuario
-            <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
-          </label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`btn ${loginMode === "password" ? "btnPrimary" : ""}`}
+              onClick={() => {
+                setLoginMode("password");
+                setError("");
+                setTgInfo("");
+              }}
+              disabled={loading}
+            >
+              Contraseña
+            </button>
 
-          <label>
-            Contraseña
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-
-          <button className="btn btnPrimary" disabled={loading}>
-            Entrar
-          </button>
-
-          <button className="btn" type="button" onClick={handleResetApiUrl} disabled={loading}>
-            Borrar URL y sesión
-          </button>
+            <button
+              type="button"
+              className={`btn ${loginMode === "telegram" ? "btnPrimary" : ""}`}
+              onClick={() => {
+                setLoginMode("telegram");
+                setError("");
+              }}
+              disabled={loading}
+            >
+              Telegram
+            </button>
+          </div>
         </form>
 
+        {loginMode === "password" ? (
+          <form onSubmit={handleLoginPassword} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            <label>
+              Usuario
+              <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
+            </label>
+
+            <label>
+              Contraseña
+              <input
+                className="input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+
+            <button className="btn btnPrimary" disabled={loading}>
+              Entrar
+            </button>
+
+            <button className="btn" type="button" onClick={handleResetApiUrl} disabled={loading}>
+              Borrar URL y sesión
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleLoginTelegram} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            <button type="button" className="btn btnPrimary" onClick={handleRequestTelegramCode} disabled={loading}>
+              Enviar código por Telegram
+            </button>
+
+            {tgInfo && <p className="muted" style={{ margin: 0 }}>{tgInfo}</p>}
+
+            <label>
+              Código (6 dígitos)
+              <input
+                className="input"
+                inputMode="numeric"
+                placeholder="123456"
+                value={tgCode}
+                onChange={(e) => {
+                  // solo dígitos, máximo 6
+                  const v = e.target.value.replace(/\D+/g, "").slice(0, 6);
+                  setTgCode(v);
+                }}
+              />
+            </label>
+
+            <button className="btn btnPrimary" disabled={loading || tgCode.length !== 6}>
+              Entrar con código
+            </button>
+
+            <button className="btn" type="button" onClick={handleResetApiUrl} disabled={loading}>
+              Borrar URL y sesión
+            </button>
+          </form>
+        )}
+
         {error && <p style={{ color: "#fb7185" }}>{error}</p>}
+
         <p className="muted" style={{ marginTop: 10 }}>
-          La API debe exponer <code>/auth/login</code>, <code>/records</code> y <code>/shortcuts</code>.
+          La API debe exponer <code>/auth/login</code>, <code>/auth/telegram/request-code</code>,{" "}
+          <code>/auth/telegram/verify</code>, <code>/records</code> y <code>/shortcuts</code>.
         </p>
       </div>
     );
@@ -410,10 +525,7 @@ export default function App() {
                 onChange={(e) => setNewRecordText(e.target.value)}
                 disabled={loading}
                 onKeyDown={(e) => {
-                  // Móvil: Enter = salto de línea normal; enviar con botón
                   if (mobileLike) return;
-
-                  // PC: Enter envía, Shift+Enter salto de línea
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     if (!loading && newRecordText.trim()) createRecordFromInput();
