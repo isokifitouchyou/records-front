@@ -96,8 +96,8 @@ export const api = {
   // Auth (password)
   login: (username, password) => request("/auth/login", { method: "POST", body: { username, password } }),
 
-  // Auth (telegram)
-  requestTelegramCode: () => request("/auth/telegram/request-code", { method: "POST" }),
+  // Telegram (ahora exige pin)
+  requestTelegramCode: (pin) => request("/auth/telegram/request-code", { method: "POST", body: { pin } }),
   verifyTelegramCode: (code) => request("/auth/telegram/verify", { method: "POST", body: { code } }),
 
   // Records

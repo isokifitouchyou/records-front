@@ -60,8 +60,11 @@ export default function App() {
   const [password, setPassword] = useState("");
 
   // Telegram login
+  const [tgPin, setTgPin] = useState("");
   const [tgCode, setTgCode] = useState("");
-  const [tgInfo, setTgInfo] = useState(""); // mensajito tipo “enviado, caduca en...”
+  const [tgInfo, setTgInfo] = useState("");
+  const [tgCooldownUntilMs, setTgCooldownUntilMs] = useState(0);
+  const [tgCooldownLeftSec, setTgCooldownLeftSec] = useState(0);
 
   // Records
   const [records, setRecords] = useState([]);
@@ -91,8 +94,11 @@ export default function App() {
     // limpiar credenciales
     setUsername("");
     setPassword("");
+    setTgPin("");
     setTgCode("");
     setTgInfo("");
+    setTgCooldownUntilMs(0);
+    setTgCooldownLeftSec(0);
 
     // limpiar estado app
     setRecords([]);
@@ -129,6 +135,25 @@ export default function App() {
 
     return () => clearTimeout(id);
   }, [token]);
+
+  // Cuenta atrás del cooldown Telegram
+  useEffect(() => {
+    if (!tgCooldownUntilMs) {
+      setTgCooldownLeftSec(0);
+      return;
+    }
+
+    const tick = () => {
+      const leftMs = tgCooldownUntilMs - Date.now();
+      const leftSec = Math.max(0, Math.ceil(leftMs / 1000));
+      setTgCooldownLeftSec(leftSec);
+      if (leftSec <= 0) setTgCooldownUntilMs(0);
+    };
+
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [tgCooldownUntilMs]);
 
   useEffect(() => {
     if (!loading && shouldRefocus === "record") {
@@ -185,13 +210,20 @@ export default function App() {
       setToken(token);
       setTokenState(token);
 
-      // limpiar password por seguridad
       setPassword("");
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function parseWaitSecondsFromMessage(msg) {
+    // El backend devuelve: "Espera 60s antes de pedir otro código."
+    const m = String(msg || "").match(/(\d+)\s*s/i);
+    if (!m) return 0;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : 0;
   }
 
   async function handleRequestTelegramCode() {
@@ -204,11 +236,26 @@ export default function App() {
         throw new Error("La URL de la API debe empezar por http:// o https://");
       }
 
-      const resp = await api.requestTelegramCode();
+      const pin = String(tgPin || "").trim();
+      if (!pin) throw new Error("Introduce el PIN para enviar el código.");
+
+      const resp = await api.requestTelegramCode(pin);
       const secs = Math.ceil((resp?.expiresInMs || 0) / 1000);
+
       setTgInfo(secs ? `Código enviado. Caduca en ~${secs}s.` : "Código enviado.");
+      // Pequeño cooldown local (mínimo) para UX (independiente del backend)
+      setTgCooldownUntilMs(Date.now() + 1000);
     } catch (e) {
-      setError(e.message);
+      const msg = e?.message || "Error";
+
+      // Si el backend te ha contestado con un 429, tu request() convierte eso en Error(msg)
+      // y aquí podemos intentar sacar los segundos para deshabilitar el botón.
+      const waitSec = parseWaitSecondsFromMessage(msg);
+      if (waitSec > 0) {
+        setTgCooldownUntilMs(Date.now() + waitSec * 1000);
+      }
+
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -229,7 +276,6 @@ export default function App() {
       setToken(token);
       setTokenState(token);
 
-      // limpiar el código tras login
       setTgCode("");
       setTgInfo("");
     } catch (e) {
@@ -370,6 +416,9 @@ export default function App() {
     }
   }
 
+  const tgSendDisabled =
+    loading || !String(tgPin || "").trim() || tgCooldownUntilMs > Date.now();
+
   if (!isLogged) {
     return (
       <div style={{ maxWidth: 460, margin: "40px auto", padding: 16 }}>
@@ -378,7 +427,11 @@ export default function App() {
         <form style={{ display: "grid", gap: 12 }}>
           <label>
             URL de la API
-            <input className="input" value={apiUrl} onChange={(e) => setApiUrlState(e.target.value)} />
+            <input
+              className="input"
+              value={apiUrl}
+              onChange={(e) => setApiUrlState(e.target.value)}
+            />
           </label>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -410,10 +463,17 @@ export default function App() {
         </form>
 
         {loginMode === "password" ? (
-          <form onSubmit={handleLoginPassword} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+          <form
+            onSubmit={handleLoginPassword}
+            style={{ display: "grid", gap: 12, marginTop: 12 }}
+          >
             <label>
               Usuario
-              <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
+              <input
+                className="input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
             </label>
 
             <label>
@@ -430,17 +490,44 @@ export default function App() {
               Entrar
             </button>
 
-            <button className="btn" type="button" onClick={handleResetApiUrl} disabled={loading}>
+            <button
+              className="btn"
+              type="button"
+              onClick={handleResetApiUrl}
+              disabled={loading}
+            >
               Borrar URL y sesión
             </button>
           </form>
         ) : (
-          <form onSubmit={handleLoginTelegram} style={{ display: "grid", gap: 12, marginTop: 12 }}>
-            <button type="button" className="btn btnPrimary" onClick={handleRequestTelegramCode} disabled={loading}>
-              Enviar código por Telegram
+          <form
+            onSubmit={handleLoginTelegram}
+            style={{ display: "grid", gap: 12, marginTop: 12 }}
+          >
+            <label>
+              PIN (para enviar el código)
+              <input
+                className="input"
+                type="password"
+                value={tgPin}
+                onChange={(e) => setTgPin(e.target.value)}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="btn btnPrimary"
+              onClick={handleRequestTelegramCode}
+              disabled={tgSendDisabled}
+            >
+              {tgCooldownLeftSec > 0 ? `Reintentar en ${tgCooldownLeftSec}s` : "Enviar código por Telegram"}
             </button>
 
-            {tgInfo && <p className="muted" style={{ margin: 0 }}>{tgInfo}</p>}
+            {tgInfo && (
+              <p className="muted" style={{ margin: 0 }}>
+                {tgInfo}
+              </p>
+            )}
 
             <label>
               Código (6 dígitos)
@@ -450,7 +537,6 @@ export default function App() {
                 placeholder="123456"
                 value={tgCode}
                 onChange={(e) => {
-                  // solo dígitos, máximo 6
                   const v = e.target.value.replace(/\D+/g, "").slice(0, 6);
                   setTgCode(v);
                 }}
@@ -461,7 +547,12 @@ export default function App() {
               Entrar con código
             </button>
 
-            <button className="btn" type="button" onClick={handleResetApiUrl} disabled={loading}>
+            <button
+              className="btn"
+              type="button"
+              onClick={handleResetApiUrl}
+              disabled={loading}
+            >
               Borrar URL y sesión
             </button>
           </form>
