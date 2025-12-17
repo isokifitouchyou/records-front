@@ -49,14 +49,23 @@ async function request(path, { method = "GET", body } = {}) {
     const msg = data?.error || `Error HTTP ${res.status}`;
     throw new Error(msg);
   }
+
   return data;
 }
 
 export const api = {
+  // Auth
   login: (username, password) => request("/auth/login", { method: "POST", body: { username, password } }),
 
+  // Records
   listRecords: () => request("/records"),
   createRecord: (text) => request("/records", { method: "POST", body: { text } }),
   updateRecord: (id, text) => request(`/records/${encodeURIComponent(id)}`, { method: "PATCH", body: { text } }),
   deleteRecord: (id) => request(`/records/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  // Shortcuts
+  listShortcuts: () => request("/shortcuts"),
+  createShortcut: (text) => request("/shortcuts", { method: "POST", body: { text } }),
+  updateShortcut: (id, text) => request(`/shortcuts/${encodeURIComponent(id)}`, { method: "PATCH", body: { text } }),
+  deleteShortcut: (id) => request(`/shortcuts/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
