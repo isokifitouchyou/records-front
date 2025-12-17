@@ -25,11 +25,16 @@ a { color: inherit; }
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; /* ✅ ayuda a evitar desbordes */
 }
 
 .th, .td {
   padding: 10px;
   border-bottom: 1px solid #1f2a3a;
+}
+
+.td {
+  word-break: break-word; /* ✅ el texto no rompe el layout */
 }
 
 .th {
@@ -129,4 +134,98 @@ a { color: inherit; }
 
 .switch input:checked + .slider:before {
   transform: translateX(20px);
+}
+
+/* -------------------- Mobile tweaks -------------------- */
+@media (max-width: 520px) {
+  .btn {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .th, .td { padding: 8px; }
+}
+
+/* -------------------- Bottom Nav (Twitter-like) -------------------- */
+
+.withBottomNav {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+.bottomNav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(11, 15, 23, 0.78);
+  border-top: 1px solid #1f2a3a;
+  backdrop-filter: blur(10px);
+  transform: translateY(0);
+  transition: transform 180ms ease;
+}
+
+.bottomNavHidden {
+  transform: translateY(110%);
+}
+
+.bottomNavInner {
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.bottomNavBtn {
+  width: 100%;
+  border-radius: 999px;
+  padding: 10px 12px;
+}
+
+.bottomNavBtnActive {
+  background: #1f3a6a;
+  border-color: #2a4a86;
+}
+
+/* -------------------- Mobile Card Lists -------------------- */
+
+.listCards {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.itemCard {
+  border: 1px solid #1f2a3a;
+  background: #0f1724;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.itemCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.itemMeta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.itemActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.iconBtn {
+  padding: 6px 10px;
+  min-width: 42px;
+  border-radius: 12px;
 }
