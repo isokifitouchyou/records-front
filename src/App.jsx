@@ -8,10 +8,17 @@ function formatLocalFromUtcIso(utcIso) {
   return d.toLocaleString();
 }
 
+function isMobileLike() {
+  // táctil / “coarse pointer” suele ser móvil/tablet
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+}
+
 export default function App() {
   const [token, setTokenState] = useState(getToken());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [mobileLike] = useState(() => isMobileLike());
 
   // Pantallas
   const [screen, setScreen] = useState("records"); // "records" | "shortcuts"
@@ -173,7 +180,6 @@ export default function App() {
       await api.createRecord(text);
       setNewRecordText("");
       setShouldRefocus("record");
-
       await loadRecords();
     } catch (e) {
       setError(e.message);
@@ -192,7 +198,6 @@ export default function App() {
       await api.createShortcut(text);
       setNewShortcutText("");
       setShouldRefocus("shortcut");
-
       await loadShortcuts();
     } catch (e) {
       setError(e.message);
@@ -243,8 +248,6 @@ export default function App() {
       if (!t) throw new Error("El texto del shortcut está vacío.");
 
       await api.createRecord(t);
-
-      // refresca records en segundo plano lógico (si estás en records ya lo verás al momento)
       await loadRecords();
     } catch (e) {
       setError(e.message);
@@ -279,7 +282,9 @@ export default function App() {
             />
           </label>
 
-          <button className="btn btnPrimary" disabled={loading}>Entrar</button>
+          <button className="btn btnPrimary" disabled={loading}>
+            Entrar
+          </button>
 
           <button className="btn" type="button" onClick={handleResetApiUrl} disabled={loading}>
             Borrar URL y sesión
@@ -298,9 +303,7 @@ export default function App() {
     <div style={{ maxWidth: 980, margin: "40px auto", padding: 16 }}>
       <div className="toolbar">
         <div>
-          <h2 style={{ margin: 0 }}>
-            {screen === "records" ? "Registros" : "Accesos directos"}
-          </h2>
+          <h2 style={{ margin: 0 }}>{screen === "records" ? "Registros" : "Accesos directos"}</h2>
           <div className="muted">
             API: <code>{getApiUrl()}</code>
           </div>
@@ -327,30 +330,40 @@ export default function App() {
 
       {screen === "records" ? (
         <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>
-          <div className="toolbar" style={{ padding: 12, gap: 10 }}>
-            <strong>Nuevo registro</strong>
+          <div className="toolbar" style={{ padding: 12, gap: 10, alignItems: "stretch" }}>
+            <strong style={{ paddingTop: 6 }}>Nuevo registro</strong>
 
-            <div style={{ display: "flex", gap: 8, flex: 1 }}>
-              <input
+            <div style={{ display: "flex", gap: 8, flex: 1, alignItems: "stretch" }}>
+              <textarea
                 ref={recordInputRef}
                 className="input"
-                placeholder="Escribe un texto y pulsa Enter..."
+                rows={mobileLike ? 3 : 2}
+                placeholder={
+                  mobileLike
+                    ? "Escribe un texto..."
+                    : "Escribe un texto (Enter envía, Shift+Enter salto de línea)..."
+                }
                 value={newRecordText}
                 onChange={(e) => setNewRecordText(e.target.value)}
                 disabled={loading}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  // Móvil: Enter = salto de línea normal; enviar con botón
+                  if (mobileLike) return;
+
+                  // PC: Enter envía, Shift+Enter salto de línea
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     if (!loading && newRecordText.trim()) createRecordFromInput();
                   }
                 }}
               />
+
               <button
                 className="btn btnPrimary"
                 onClick={createRecordFromInput}
                 disabled={loading || !newRecordText.trim()}
               >
-                Guardar
+                {mobileLike ? "Enviar" : "Guardar"}
               </button>
             </div>
           </div>
@@ -358,9 +371,13 @@ export default function App() {
           <table className="table">
             <thead>
               <tr>
-                <th className="th" style={{ width: 220 }}>Fecha (local)</th>
+                <th className="th" style={{ width: 220 }}>
+                  Fecha (local)
+                </th>
                 <th className="th">Texto</th>
-                <th className="th" style={{ width: 190, textAlign: "center" }}>Acciones</th>
+                <th className="th" style={{ width: 190, textAlign: "center" }}>
+                  Acciones
+                </th>
               </tr>
             </thead>
 
@@ -374,15 +391,18 @@ export default function App() {
                       {formatLocalFromUtcIso(r.tsUtc)}
                     </td>
 
-                    <td className="td">
+                    <td className="td" style={{ whiteSpace: "pre-wrap" }}>
                       {isEditing ? (
-                        <input
+                        <textarea
                           className="input"
+                          rows={mobileLike ? 3 : 2}
                           value={editingText}
                           onChange={(e) => setEditingText(e.target.value)}
                           disabled={loading}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
+                            if (mobileLike) return;
+
+                            if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();
                               if (!loading && editingText.trim()) saveEdit();
                             }
@@ -431,24 +451,32 @@ export default function App() {
         </div>
       ) : (
         <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>
-          <div className="toolbar" style={{ padding: 12, gap: 10 }}>
-            <strong>Nuevo shortcut</strong>
+          <div className="toolbar" style={{ padding: 12, gap: 10, alignItems: "stretch" }}>
+            <strong style={{ paddingTop: 6 }}>Nuevo shortcut</strong>
 
-            <div style={{ display: "flex", gap: 8, flex: 1 }}>
-              <input
+            <div style={{ display: "flex", gap: 8, flex: 1, alignItems: "stretch" }}>
+              <textarea
                 ref={shortcutInputRef}
                 className="input"
-                placeholder="Texto del acceso directo (Enter para guardar)..."
+                rows={mobileLike ? 3 : 2}
+                placeholder={
+                  mobileLike
+                    ? "Texto del acceso directo..."
+                    : "Texto del acceso directo (Enter guarda, Shift+Enter salto de línea)..."
+                }
                 value={newShortcutText}
                 onChange={(e) => setNewShortcutText(e.target.value)}
                 disabled={loading}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (mobileLike) return;
+
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     if (!loading && newShortcutText.trim()) createShortcutFromInput();
                   }
                 }}
               />
+
               <button
                 className="btn btnPrimary"
                 onClick={createShortcutFromInput}
@@ -462,9 +490,13 @@ export default function App() {
           <table className="table">
             <thead>
               <tr>
-                <th className="th" style={{ width: 220 }}>Fecha (local)</th>
+                <th className="th" style={{ width: 220 }}>
+                  Fecha (local)
+                </th>
                 <th className="th">Texto</th>
-                <th className="th" style={{ width: 260, textAlign: "center" }}>Acciones</th>
+                <th className="th" style={{ width: 260, textAlign: "center" }}>
+                  Acciones
+                </th>
               </tr>
             </thead>
 
@@ -478,15 +510,18 @@ export default function App() {
                       {formatLocalFromUtcIso(s.tsUtc)}
                     </td>
 
-                    <td className="td">
+                    <td className="td" style={{ whiteSpace: "pre-wrap" }}>
                       {isEditing ? (
-                        <input
+                        <textarea
                           className="input"
+                          rows={mobileLike ? 3 : 2}
                           value={editingText}
                           onChange={(e) => setEditingText(e.target.value)}
                           disabled={loading}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
+                            if (mobileLike) return;
+
+                            if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();
                               if (!loading && editingText.trim()) saveEdit();
                             }
@@ -550,7 +585,8 @@ export default function App() {
       )}
 
       <p className="muted" style={{ marginTop: 12 }}>
-        El servidor guarda el timestamp en UTC por consistencia, aquí se muestra en hora local. No se muestra el UUID.
+        En PC: Enter envía y Shift+Enter inserta salto de línea. En móvil: Enter inserta salto de línea y se envía con el
+        botón.
       </p>
     </div>
   );
