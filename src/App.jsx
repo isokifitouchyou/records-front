@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import {
   api,
   clearApiUrl,
@@ -61,7 +61,6 @@ function formatLocalShort(utcIso) {
 }
 
 function localDayKey(utcIso) {
-  // Clave por día en horario local: YYYY-MM-DD
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return "invalid";
   const YYYY = String(d.getFullYear());
@@ -71,7 +70,6 @@ function localDayKey(utcIso) {
 }
 
 function localDayLabel(utcIso) {
-  // Label para separador: W YYYY-MM-DD
   const d = new Date(utcIso);
   if (Number.isNaN(d.getTime())) return "Fecha inválida";
   const W = weekdayLetter(d);
@@ -104,7 +102,6 @@ function HighlightText({ text, query }) {
       );
     }
   }
-
   return <>{out}</>;
 }
 
@@ -128,6 +125,29 @@ function getJwtExpMs(token) {
   return payload.exp * 1000;
 }
 
+// -------------------- API URL helpers (http/https selector) --------------------
+
+function splitApiUrl(url) {
+  // Devuelve { scheme: "http://" | "https://", rest: "host:port/..." }
+  const raw = String(url || "").trim();
+  if (!raw) return { scheme: "http://", rest: "" };
+
+  const m = raw.match(/^(https?:\/\/)(.+)$/i);
+  if (m) return { scheme: m[1].toLowerCase(), rest: m[2] };
+
+  // si venía sin esquema, asumimos http
+  return { scheme: "http://", rest: raw };
+}
+
+function joinApiUrl(scheme, rest) {
+  const s = String(scheme || "http://").toLowerCase();
+  const r = String(rest || "").trim();
+  if (!r) return "";
+  // si el usuario pega algo con esquema aquí, lo respetamos:
+  if (/^https?:\/\//i.test(r)) return r;
+  return `${s}${r}`;
+}
+
 export default function App() {
   const [token, setTokenState] = useState(getToken());
   const [loading, setLoading] = useState(false);
@@ -143,7 +163,12 @@ export default function App() {
   const lastScrollYRef = useRef(0);
 
   // Login
-  const [apiUrl, setApiUrlState] = useState(getApiUrl() || "");
+  const storedApiUrl = getApiUrl() || "";
+  const initialSplit = splitApiUrl(storedApiUrl);
+
+  const [apiScheme, setApiScheme] = useState(initialSplit.scheme || "http://"); // ✅ nuevo
+  const [apiHost, setApiHost] = useState(initialSplit.rest || ""); // ✅ nuevo (sin esquema)
+
   const [loginMode, setLoginMode] = useState("password"); // "password" | "telegram"
 
   // Password login
@@ -163,7 +188,7 @@ export default function App() {
   const [newRecordText, setNewRecordText] = useState("");
   const recordInputRef = useRef(null);
 
-  // ✅ búsqueda en registros
+  // búsqueda en registros
   const [recordQuery, setRecordQuery] = useState("");
 
   // Shortcuts
@@ -171,7 +196,7 @@ export default function App() {
   const [newShortcutText, setNewShortcutText] = useState("");
   const shortcutInputRef = useRef(null);
 
-  // edición in-place (compartida)
+  // edición in-place
   const [editingType, setEditingType] = useState(""); // "record" | "shortcut" | ""
   const [editingId, setEditingId] = useState("");
   const [editingText, setEditingText] = useState("");
@@ -186,7 +211,6 @@ export default function App() {
     setTokenState("");
     setError(message);
 
-    // limpiar credenciales
     setUsername("");
     setPassword("");
 
@@ -197,10 +221,8 @@ export default function App() {
     setTgCooldownUntilMs(0);
     setTgCooldownLeftSec(0);
 
-    // limpiar búsqueda
     setRecordQuery("");
 
-    // limpiar estado app
     setRecords([]);
     setShortcuts([]);
     setEditingType("");
@@ -295,7 +317,7 @@ export default function App() {
     }
   }, [loading, shouldRefocus]);
 
-  // limpiar búsqueda al cambiar de pantalla (opcional, pero suele ser cómodo)
+  // limpiar búsqueda al cambiar de pantalla
   useEffect(() => {
     setRecordQuery("");
   }, [screen]);
@@ -331,16 +353,22 @@ export default function App() {
     })();
   }, [isLogged]);
 
+  function normalizeAndStoreApiUrlOrThrow() {
+    const full = joinApiUrl(apiScheme, apiHost);
+    const normalized = setApiUrl(full); // quita trailing slashes
+    if (!/^https?:\/\/.+/i.test(normalized)) {
+      throw new Error("La URL de la API no es válida.");
+    }
+    return normalized;
+  }
+
   async function handleLoginPassword(e) {
     e.preventDefault();
     setError("");
     setTgInfo("");
     setLoading(true);
     try {
-      const normalized = setApiUrl(apiUrl);
-      if (!/^https?:\/\/.+/i.test(normalized)) {
-        throw new Error("La URL de la API debe empezar por http:// o https://");
-      }
+      normalizeAndStoreApiUrlOrThrow();
       const { token } = await api.login(username, password);
       setToken(token);
       setTokenState(token);
@@ -364,10 +392,7 @@ export default function App() {
     setTgInfo("");
     setLoading(true);
     try {
-      const normalized = setApiUrl(apiUrl);
-      if (!/^https?:\/\/.+/i.test(normalized)) {
-        throw new Error("La URL de la API debe empezar por http:// o https://");
-      }
+      normalizeAndStoreApiUrlOrThrow();
 
       const pin = String(tgPin || "").trim();
       if (!pin) throw new Error("Introduce el PIN para enviar el código.");
@@ -402,10 +427,7 @@ export default function App() {
     setError("");
     setLoading(true);
     try {
-      const normalized = setApiUrl(apiUrl);
-      if (!/^https?:\/\/.+/i.test(normalized)) {
-        throw new Error("La URL de la API debe empezar por http:// o https://");
-      }
+      normalizeAndStoreApiUrlOrThrow();
 
       const code = String(tgCode || "").trim();
       const { token } = await api.verifyTelegramCode(code);
@@ -429,7 +451,8 @@ export default function App() {
   function handleResetApiUrl() {
     clearApiUrl();
     doLogout("");
-    setApiUrlState("");
+    setApiScheme("http://"); // ✅ vuelve al default
+    setApiHost("");
   }
 
   function startEdit(type, item) {
@@ -553,14 +576,14 @@ export default function App() {
     }
   }
 
-  // ✅ Filtrado por texto (registros)
+  // Filtrado por texto (registros)
   const filteredRecords = useMemo(() => {
     const q = recordQuery.trim().toLowerCase();
     if (!q) return records;
     return records.filter((r) => String(r.text || "").toLowerCase().includes(q));
   }, [records, recordQuery]);
 
-  // ✅ Agrupación por día (registros)
+  // Agrupación por día (registros)
   const groupedRecords = useMemo(() => {
     const map = new Map();
     for (const r of filteredRecords) {
@@ -568,12 +591,11 @@ export default function App() {
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(r);
     }
-    // records ya vienen ordenados desc, pero garantizamos:
     const keys = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
     return keys.map((k) => ({ dayKey: k, items: map.get(k) || [] }));
   }, [filteredRecords]);
 
-  // ✅ Agrupación por día (shortcuts) para que no quede todo “pegado”
+  // Agrupación por día (shortcuts)
   const groupedShortcuts = useMemo(() => {
     const map = new Map();
     for (const s of shortcuts) {
@@ -597,11 +619,31 @@ export default function App() {
         <form style={{ display: "grid", gap: 12 }}>
           <label>
             URL de la API
-            <input
-              className="input"
-              value={apiUrl}
-              onChange={(e) => setApiUrlState(e.target.value)}
-            />
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+              <select
+                className="select"
+                value={apiScheme}
+                onChange={(e) => setApiScheme(e.target.value)}
+                style={{ width: 130 }}
+                disabled={loading}
+                title="Esquema"
+              >
+                <option value="http://">http://</option>
+                <option value="https://">https://</option>
+              </select>
+
+              <input
+                className="input"
+                value={apiHost}
+                onChange={(e) => setApiHost(e.target.value)}
+                placeholder="localhost:3000"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="muted" style={{ marginTop: 6 }}>
+              Usando: <code>{joinApiUrl(apiScheme, apiHost) || "(vacío)"}</code>
+            </div>
           </label>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -800,7 +842,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ✅ barra de búsqueda */}
           <div style={{ padding: 12, paddingTop: 0 }}>
             <input
               className="input"
@@ -816,7 +857,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ✅ Modo tarjeta en móvil + separadores por día */}
           {mobileLike ? (
             <div style={{ paddingBottom: 6 }}>
               {groupedRecords.map((g) => (
@@ -899,11 +939,10 @@ export default function App() {
               )}
             </div>
           ) : (
-            // Desktop: tabla + separadores por día
             <table className="table">
               <thead>
                 <tr>
-                  <th className="th" style={{ width: 260 }}>
+                  <th className="th" style={{ width: 280 }}>
                     Fecha (local)
                   </th>
                   <th className="th">Texto</th>
@@ -915,7 +954,7 @@ export default function App() {
 
               <tbody>
                 {groupedRecords.map((g) => (
-                  <React.Fragment key={g.dayKey}>
+                  <Fragment key={g.dayKey}>
                     <tr className="daySepRow">
                       <td className="td" colSpan={3}>
                         <div className="daySepLabel">
@@ -972,7 +1011,7 @@ export default function App() {
                         </tr>
                       );
                     })}
-                  </React.Fragment>
+                  </Fragment>
                 ))}
 
                 {filteredRecords.length === 0 && (
@@ -1004,6 +1043,7 @@ export default function App() {
                 disabled={loading}
                 onKeyDown={(e) => {
                   if (mobileLike) return;
+
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     if (!loading && newShortcutText.trim()) createShortcutFromInput();
@@ -1097,20 +1137,12 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              <div className="listCards" style={{ paddingTop: 0 }}>
-                <div className="itemCard">
-                  <div className="muted">
-                    Pulsa <strong>➕</strong> para crear un registro con ese texto.
-                  </div>
-                </div>
-              </div>
             </div>
           ) : (
             <table className="table">
               <thead>
                 <tr>
-                  <th className="th" style={{ width: 260 }}>
+                  <th className="th" style={{ width: 280 }}>
                     Fecha (local)
                   </th>
                   <th className="th">Texto</th>
@@ -1122,7 +1154,7 @@ export default function App() {
 
               <tbody>
                 {groupedShortcuts.map((g) => (
-                  <React.Fragment key={g.dayKey}>
+                  <Fragment key={g.dayKey}>
                     <tr className="daySepRow">
                       <td className="td" colSpan={3}>
                         <div className="daySepLabel">
@@ -1171,15 +1203,12 @@ export default function App() {
                                   className="btn btnPrimary"
                                   onClick={() => registerFromShortcut(s.text)}
                                   disabled={loading}
-                                  title="Crea un registro con este texto"
                                 >
                                   Registrar
                                 </button>
-
                                 <button className="btn" onClick={() => startEdit("shortcut", s)} disabled={loading}>
                                   Editar
                                 </button>
-
                                 <button className="btn" onClick={() => deleteShortcut(s.id)} disabled={loading} title="Borrar">
                                   🗑
                                 </button>
@@ -1189,7 +1218,7 @@ export default function App() {
                         </tr>
                       );
                     })}
-                  </React.Fragment>
+                  </Fragment>
                 ))}
 
                 {shortcuts.length === 0 && (
